@@ -1,0 +1,117 @@
+platform:
+  name: "McLaren Applied Communication Platform"
+  version: "1.0.0"
+  environment: "development"
+
+logging:
+  level: "INFO"
+  file: "logs/mclaren_platform.log"
+  max_size_mb: 100
+  backup_count: 5
+
+network:
+  scan_interval_seconds: 60
+  quality_threshold: 30
+  performance_monitoring:
+    enabled: true
+    interval_seconds: 30
+  providers:
+    wifi6:
+      enabled: true
+      priority: 1
+    lte5g:
+      enabled: true
+      priority: 2
+    starlink:
+      enabled: true
+      priority: 3
+    ethernet:
+      enabled: true
+      priority: 4
+
+containers:
+  registry_url: "registry.mclarenapplied.com"
+  platform: "linux/arm64"
+  health_check_interval: 30
+  ota_updates:
+    enabled: true
+    check_interval: 3600
+  resource_limits:
+    default_memory: "512m"
+    default_cpu: "0.5"
+    max_memory: "2g"
+    max_cpu: "2.0"
+
+telemetry:
+  processing:
+    buffer_size: 10000
+    batch_size: 100
+    processing_interval: 5
+  analytics:
+    real_time_enabled: true
+    historical_retention_days: 90
+  alerts:
+    speed_threshold_kmh: 200
+    network_quality_threshold: 30
+    system_efficiency_threshold: 40
+
+security:
+  compliance_frameworks:
+    - "iso_27001"
+    - "iso_9001"
+    - "iso_14001"
+  vulnerability_scanning:
+    enabled: true
+    scan_interval_hours: 24
+  encryption:
+    algorithm: "AES-256-GCM"
+    key_rotation_days: 30
+  audit:
+    enabled: true
+    retention_days: 365
+
+fault_tolerance:
+  circuit_breakers:
+    network:
+      failure_threshold: 5
+      timeout_seconds: 60
+      half_open_max_calls: 3
+    containers:
+      failure_threshold: 3
+      timeout_seconds: 45
+      half_open_max_calls: 2
+    telemetry:
+      failure_threshold: 10
+      timeout_seconds: 30
+      half_open_max_calls: 5
+    security:
+      failure_threshold: 2
+      timeout_seconds: 120
+      half_open_max_calls: 1
+
+monitoring:
+  health_check_interval: 30
+  performance_check_interval: 60
+  metrics_retention_hours: 168  # 1 week
+  alerts:
+    enabled: true
+    channels:
+      - email
+      - webhook
+
+coordination:
+  optimization_interval: 120
+  resource_rebalancing: true
+  load_balancing: true
+
+redis:
+  url: "redis://localhost:6379"
+  db: 0
+  max_connections: 20
+  connection_timeout: 30
+
+database:
+  url: "postgresql://localhost:5432/mclaren_platform"
+  pool_size: 10
+  max_overflow: 20
+  pool_timeout: 30
