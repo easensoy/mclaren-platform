@@ -9,18 +9,19 @@ import time
 import threading
 import logging
 from pathlib import Path
+import platform as python_platform  # Rename to avoid conflict
 
 # Add the parent directory to sys.path to import mclaren_platform modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
-    from monitoring.dashboard import McLarenMonitor
-    from monitoring.prometheus_metrics import start_prometheus_server
-    from monitoring.metrics_collector import start_metrics_collection
+    from mclaren_platform.monitoring.dashboard import McLarenMonitor
+    from mclaren_platform.monitoring.prometheus_metrics import start_prometheus_server
+    from mclaren_platform.monitoring.metrics_collector import start_metrics_collection
 except ImportError as e:
     print(f"Import error: {e}")
     print("Make sure you're running this from the McLaren_Platform directory")
-    print("and that all dependencies are installed: pip install -r monitoring/requirements.txt")
+    print("and that all dependencies are installed: pip install -r requirements.txt")
     sys.exit(1)
 
 # Configure logging
