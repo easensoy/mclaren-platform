@@ -4,8 +4,8 @@ from typing import Dict, Any, Callable, Optional, Union
 from datetime import datetime, timedelta
 from enum import Enum
 from dataclasses import dataclass
-from ..core.models import Event
-from ..core.events import EventBus
+from core.models import Event
+from core.events import EventBus
 
 class CircuitState(Enum):
     CLOSED = "closed"
@@ -20,11 +20,9 @@ class CircuitBreakerConfig:
     success_threshold: int = 1
 
 class CircuitBreakerOpenException(Exception):
-    """Exception raised when circuit breaker is open."""
     pass
 
 class CircuitBreaker:
-    """Circuit breaker implementation for fault tolerance."""
     
     def __init__(self, name: str, config: CircuitBreakerConfig, event_bus: Optional[EventBus] = None):
         self.name = name
@@ -41,7 +39,6 @@ class CircuitBreaker:
         self._logger = logging.getLogger(__name__)
     
     async def execute(self, func: Callable, *args, **kwargs) -> Any:
-        """Execute function with circuit breaker protection."""
         if self.state == CircuitState.OPEN:
             if self._should_attempt_reset():
                 self._transition_to_half_open()
@@ -53,23 +50,19 @@ class CircuitBreaker:
                 raise CircuitBreakerOpenException(f"Circuit breaker {self.name} half-open call limit exceeded")
         
         try:
-            # Execute the function
             if asyncio.iscoroutinefunction(func):
                 result = await func(*args, **kwargs)
             else:
                 result = func(*args, **kwargs)
             
-            # Handle success
             await self._on_success()
             return result
             
         except Exception as e:
-            # Handle failure
             await self._on_failure(e)
             raise
     
     def _should_attempt_reset(self) -> bool:
-        """Check if enough time has passed to attempt reset."""
         if self.last_failure_time is None:
             return False
         
@@ -77,13 +70,11 @@ class CircuitBreaker:
         return time_since_failure.total_seconds() >= self.config.timeout_seconds
     
     def _transition_to_half_open(self) -> None:
-        """Transition circuit breaker to half-open state."""
         self.state = CircuitState.HALF_OPEN
         self.half_open_calls = 0
         self._logger.info(f"Circuit breaker {self.name} transitioned to half-open")
     
     async def _on_success(self) -> None:
-        """Handle successful execution."""
         self.last_success_time = datetime.now()
         
         if self.state == CircuitState.HALF_OPEN:
@@ -93,11 +84,9 @@ class CircuitBreaker:
             if self.success_count >= self.config.success_threshold:
                 self._transition_to_closed()
         elif self.state == CircuitState.CLOSED:
-            # Reset failure count on success
             self.failure_count = 0
     
     async def _on_failure(self, exception: Exception) -> None:
-        """Handle failed execution."""
         self.failure_count += 1
         self.last_failure_time = datetime.now()
         
@@ -107,7 +96,6 @@ class CircuitBreaker:
             if self.failure_count >= self.config.failure_threshold:
                 self._transition_to_open()
         
-        # Publish failure event
         if self.event_bus:
             await self.event_bus.publish(Event(
                 event_type='circuit_breaker_failure',
@@ -120,7 +108,6 @@ class CircuitBreaker:
             ))
     
     def _transition_to_closed(self) -> None:
-        """Transition circuit breaker to closed state."""
         self.state = CircuitState.CLOSED
         self.failure_count = 0
         self.success_count = 0
@@ -135,7 +122,6 @@ class CircuitBreaker:
             )))
     
     def _transition_to_open(self) -> None:
-        """Transition circuit breaker to open state."""
         self.state = CircuitState.OPEN
         self.success_count = 0
         self.half_open_calls = 0
@@ -152,7 +138,6 @@ class CircuitBreaker:
             )))
     
     def get_status(self) -> Dict[str, Any]:
-        """Get current circuit breaker status."""
         return {
             'name': self.name,
             'state': self.state.value,

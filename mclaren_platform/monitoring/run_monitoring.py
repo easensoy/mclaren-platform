@@ -1,17 +1,10 @@
-#!/usr/bin/env python3
-"""
-McLaren Platform Monitoring Launcher
-Starts both the dashboard and Prometheus metrics server
-"""
-
 import sys
 import time
 import threading
 import logging
 from pathlib import Path
-import platform as python_platform  # Rename to avoid conflict
+import platform as python_platform
 
-# Add the parent directory to sys.path to import mclaren_platform modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
@@ -24,7 +17,6 @@ except ImportError as e:
     print("and that all dependencies are installed: pip install -r requirements.txt")
     sys.exit(1)
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -32,7 +24,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def start_prometheus_monitoring(port=8000):
-    """Start Prometheus metrics server"""
     try:
         logger.info(f"Starting Prometheus metrics server on port {port}")
         prometheus_server = start_prometheus_server(port=port)
@@ -43,14 +34,11 @@ def start_prometheus_monitoring(port=8000):
         return None
 
 def start_dashboard_monitoring(port=8050):
-    """Start the dashboard server"""
     try:
         logger.info(f"Starting McLaren Dashboard on port {port}")
         
-        # Start metrics collection
         metrics_collector = start_metrics_collection(collection_interval=5.0)
         
-        # Create and run dashboard
         dashboard = McLarenMonitor(metrics_collector=metrics_collector)
         dashboard.run(debug=False, port=port, host='0.0.0.0')
         
@@ -59,12 +47,10 @@ def start_dashboard_monitoring(port=8050):
         raise
 
 def main():
-    """Main function to start all monitoring components"""
     print("=" * 60)
     print("McLaren Applied Communication Platform - Monitoring Suite")
     print("=" * 60)
     
-    # Start Prometheus server in background thread
     prometheus_thread = threading.Thread(
         target=start_prometheus_monitoring,
         args=(8000,),
@@ -72,7 +58,6 @@ def main():
     )
     prometheus_thread.start()
     
-    # Give Prometheus server time to start
     time.sleep(2)
     
     print("\n📊 Monitoring Services Starting...")
@@ -89,7 +74,6 @@ def main():
     print("Press Ctrl+C to stop all services")
     
     try:
-        # Start dashboard (this blocks)
         start_dashboard_monitoring(port=8050)
     except KeyboardInterrupt:
         print("\n\n🛑 Shutting down monitoring services...")

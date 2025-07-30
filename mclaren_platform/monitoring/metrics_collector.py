@@ -1,8 +1,3 @@
-"""
-Metrics Collection Engine for McLaren Platform
-Integrates with existing platform components to collect and process metrics
-"""
-
 import time
 import threading
 import logging
@@ -17,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MetricData:
-    """Data structure for storing metric information"""
     name: str
     value: Any
     timestamp: datetime
@@ -25,10 +19,6 @@ class MetricData:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 class MetricsCollector:
-    """
-    Central metrics collection system for McLaren Platform
-    Integrates with orchestrator, networking, and telemetry components
-    """
     
     def __init__(self, collection_interval: float = 5.0):
         self.collection_interval = collection_interval
@@ -38,36 +28,29 @@ class MetricsCollector:
         self.collection_thread: Optional[threading.Thread] = None
         self.callbacks: List[Callable[[str, MetricData], None]] = []
         
-        # Initialize default collectors
         self._register_default_collectors()
         
         logger.info("Metrics collector initialized")
     
     def _register_default_collectors(self):
-        """Register default system and platform metric collectors"""
         
-        # System metrics
         self.register_collector('system.cpu', self._collect_cpu_metrics)
         self.register_collector('system.memory', self._collect_memory_metrics)
         self.register_collector('system.disk', self._collect_disk_metrics)
         self.register_collector('system.network', self._collect_network_metrics)
         
-        # Platform metrics
         self.register_collector('platform.health', self._collect_platform_health)
         self.register_collector('platform.connections', self._collect_connection_metrics)
         self.register_collector('platform.performance', self._collect_performance_metrics)
     
     def register_collector(self, name: str, collector_func: Callable[[], List[MetricData]]):
-        """Register a metric collector function"""
         self.collectors[name] = collector_func
         logger.info(f"Registered metric collector: {name}")
     
     def register_callback(self, callback: Callable[[str, MetricData], None]):
-        """Register a callback to be called when metrics are collected"""
         self.callbacks.append(callback)
     
     def start_collection(self):
-        """Start the metrics collection process"""
         if self.running:
             logger.warning("Metrics collection already running")
             return
@@ -78,21 +61,18 @@ class MetricsCollector:
         logger.info("Metrics collection started")
     
     def stop_collection(self):
-        """Stop the metrics collection process"""
         self.running = False
         if self.collection_thread:
             self.collection_thread.join(timeout=10)
         logger.info("Metrics collection stopped")
     
     def _collection_loop(self):
-        """Main collection loop running in background thread"""
         logger.info("Starting metrics collection loop")
         
         while self.running:
             try:
                 collection_start = time.time()
                 
-                # Run all registered collectors
                 for collector_name, collector_func in self.collectors.items():
                     try:
                         metrics = collector_func()
@@ -100,7 +80,6 @@ class MetricsCollector:
                             for metric in metrics:
                                 self._store_metric(collector_name, metric)
                                 
-                                # Call registered callbacks
                                 for callback in self.callbacks:
                                     try:
                                         callback(collector_name, metric)
@@ -110,7 +89,6 @@ class MetricsCollector:
                     except Exception as e:
                         logger.error(f"Error in collector {collector_name}: {e}")
                 
-                # Calculate collection time and sleep accordingly
                 collection_time = time.time() - collection_start
                 sleep_time = max(0, self.collection_interval - collection_time)
                 
@@ -121,23 +99,19 @@ class MetricsCollector:
             
             except Exception as e:
                 logger.error(f"Error in collection loop: {e}")
-                time.sleep(1)  # Prevent tight error loops
+                time.sleep(1)
     
     def _store_metric(self, collector_name: str, metric: MetricData):
-        """Store metric data in internal storage"""
         storage_key = f"{collector_name}.{metric.name}"
         self.metrics_storage[storage_key].append(metric)
     
     def get_metrics(self, name_pattern: str = None, since: datetime = None) -> Dict[str, List[MetricData]]:
-        """Retrieve stored metrics, optionally filtered by pattern and time"""
         result = {}
         
         for metric_name, metric_data in self.metrics_storage.items():
-            # Apply name pattern filter
             if name_pattern and name_pattern not in metric_name:
                 continue
             
-            # Apply time filter
             if since:
                 filtered_data = [m for m in metric_data if m.timestamp >= since]
             else:
@@ -149,7 +123,6 @@ class MetricsCollector:
         return result
     
     def get_latest_metrics(self, name_pattern: str = None) -> Dict[str, MetricData]:
-        """Get the most recent value for each metric"""
         result = {}
         
         for metric_name, metric_data in self.metrics_storage.items():
@@ -162,12 +135,10 @@ class MetricsCollector:
         return result
     
     def _collect_cpu_metrics(self) -> List[MetricData]:
-        """Collect CPU-related metrics"""
         metrics = []
         current_time = datetime.now()
         
         try:
-            # Overall CPU usage
             cpu_percent = psutil.cpu_percent(interval=1)
             metrics.append(MetricData(
                 name='usage_percent',
@@ -176,7 +147,6 @@ class MetricsCollector:
                 labels={'component': 'cpu'}
             ))
             
-            # Per-CPU usage
             cpu_percents = psutil.cpu_percent(percpu=True)
             for i, cpu_pct in enumerate(cpu_percents):
                 metrics.append(MetricData(
@@ -186,7 +156,6 @@ class MetricsCollector:
                     labels={'component': 'cpu', 'cpu_id': str(i)}
                 ))
             
-            # Load averages (Linux/macOS)
             try:
                 load_avg = psutil.getloadavg()
                 for i, period in enumerate(['1min', '5min', '15min']):
@@ -197,7 +166,7 @@ class MetricsCollector:
                         labels={'component': 'cpu', 'period': period}
                     ))
             except AttributeError:
-                pass  # Not available on Windows
+                pass
             
         except Exception as e:
             logger.error(f"Error collecting CPU metrics: {e}")
@@ -205,12 +174,10 @@ class MetricsCollector:
         return metrics
     
     def _collect_memory_metrics(self) -> List[MetricData]:
-        """Collect memory-related metrics"""
         metrics = []
         current_time = datetime.now()
         
         try:
-            # Virtual memory
             memory = psutil.virtual_memory()
             memory_metrics = {
                 'total': memory.total,
@@ -228,7 +195,6 @@ class MetricsCollector:
                     labels={'component': 'memory', 'type': 'virtual'}
                 ))
             
-            # Swap memory
             swap = psutil.swap_memory()
             swap_metrics = {
                 'total': swap.total,
@@ -251,12 +217,10 @@ class MetricsCollector:
         return metrics
     
     def _collect_disk_metrics(self) -> List[MetricData]:
-        """Collect disk I/O and usage metrics"""
         metrics = []
         current_time = datetime.now()
         
         try:
-            # Disk I/O counters
             disk_io = psutil.disk_io_counters()
             if disk_io:
                 io_metrics = {
@@ -276,8 +240,7 @@ class MetricsCollector:
                         labels={'component': 'disk', 'type': 'io'}
                     ))
             
-            # Disk usage for key mount points
-            key_paths = ['/', '/home', '/tmp']  # Add more as needed
+            key_paths = ['/', '/home', '/tmp']
             for path in key_paths:
                 try:
                     usage = psutil.disk_usage(path)
@@ -289,7 +252,7 @@ class MetricsCollector:
                             labels={'component': 'disk', 'type': 'usage', 'path': path}
                         ))
                 except (OSError, FileNotFoundError):
-                    continue  # Path doesn't exist on this system
+                    continue
                     
         except Exception as e:
             logger.error(f"Error collecting disk metrics: {e}")
@@ -297,12 +260,10 @@ class MetricsCollector:
         return metrics
     
     def _collect_network_metrics(self) -> List[MetricData]:
-        """Collect network interface metrics"""
         metrics = []
         current_time = datetime.now()
         
         try:
-            # Per-interface statistics
             interfaces = psutil.net_io_counters(pernic=True)
             for interface, stats in interfaces.items():
                 interface_metrics = {
@@ -324,7 +285,6 @@ class MetricsCollector:
                         labels={'component': 'network', 'interface': interface}
                     ))
             
-            # Network connections
             connections = psutil.net_connections()
             connection_counts = defaultdict(int)
             for conn in connections:
@@ -344,13 +304,11 @@ class MetricsCollector:
         return metrics
     
     def _collect_platform_health(self) -> List[MetricData]:
-        """Collect McLaren platform health metrics"""
         metrics = []
         current_time = datetime.now()
         
         try:
-            # Mock platform health score (replace with actual health checks)
-            health_score = 95 + (time.time() % 10)  # Simulated health
+            health_score = 95 + (time.time() % 10)
             metrics.append(MetricData(
                 name='health_score',
                 value=health_score,
@@ -358,12 +316,11 @@ class MetricsCollector:
                 labels={'component': 'platform'}
             ))
             
-            # Circuit breaker status (mock - replace with actual status)
             circuit_breakers = ['network', 'storage', 'compute', 'telemetry']
             for breaker in circuit_breakers:
                 metrics.append(MetricData(
                     name='circuit_breaker_status',
-                    value=1,  # 1 = healthy, 0 = open
+                    value=1,
                     timestamp=current_time,
                     labels={'component': 'platform', 'breaker': breaker}
                 ))
@@ -374,12 +331,10 @@ class MetricsCollector:
         return metrics
     
     def _collect_connection_metrics(self) -> List[MetricData]:
-        """Collect platform connection metrics"""
         metrics = []
         current_time = datetime.now()
         
         try:
-            # Active connections count
             active_connections = len(psutil.net_connections())
             metrics.append(MetricData(
                 name='active_count',
@@ -388,12 +343,11 @@ class MetricsCollector:
                 labels={'component': 'connections'}
             ))
             
-            # Mock aggregation engine metrics
-            interfaces = ['wlp2s0f0', 'docker0']  # From your platform logs
+            interfaces = ['wlp2s0f0', 'docker0']
             for interface in interfaces:
                 metrics.append(MetricData(
                     name='interface_status',
-                    value=1,  # 1 = active, 0 = inactive
+                    value=1,
                     timestamp=current_time,
                     labels={'component': 'connections', 'interface': interface}
                 ))
@@ -404,17 +358,15 @@ class MetricsCollector:
         return metrics
     
     def _collect_performance_metrics(self) -> List[MetricData]:
-        """Collect platform performance metrics"""
         metrics = []
         current_time = datetime.now()
         
         try:
-            # Mock performance metrics (replace with actual measurements)
             performance_metrics = {
-                'message_processing_time': 0.05,  # seconds
-                'aggregation_latency': 0.02,      # seconds
-                'throughput': 1000,               # messages/second
-                'queue_depth': 10                 # messages in queue
+                'message_processing_time': 0.05,
+                'aggregation_latency': 0.02,
+                'throughput': 1000,
+                'queue_depth': 10
             }
             
             for metric_name, value in performance_metrics.items():
@@ -431,7 +383,6 @@ class MetricsCollector:
         return metrics
     
     def export_metrics(self, format_type: str = 'json') -> str:
-        """Export metrics in specified format"""
         latest_metrics = self.get_latest_metrics()
         
         if format_type == 'json':
@@ -446,7 +397,6 @@ class MetricsCollector:
             return json.dumps(exportable, indent=2)
         
         elif format_type == 'prometheus':
-            # Basic Prometheus format export
             lines = []
             for metric_name, metric_data in latest_metrics.items():
                 sanitized_name = metric_name.replace('.', '_').replace('-', '_')
@@ -461,18 +411,15 @@ class MetricsCollector:
         else:
             raise ValueError(f"Unsupported format: {format_type}")
 
-# Global metrics collector instance
 _global_collector: Optional[MetricsCollector] = None
 
 def get_metrics_collector() -> MetricsCollector:
-    """Get or create the global metrics collector instance"""
     global _global_collector
     if _global_collector is None:
         _global_collector = MetricsCollector()
     return _global_collector
 
 def start_metrics_collection(collection_interval: float = 5.0) -> MetricsCollector:
-    """Start metrics collection with the global collector"""
     collector = get_metrics_collector()
     collector.collection_interval = collection_interval
     collector.start_collection()

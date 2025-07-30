@@ -47,7 +47,7 @@ class NetworkInterface:
 class TelemetryData:
     timestamp: datetime
     train_id: str
-    location: Tuple[float, float]  # lat, lon
+    location: Tuple[float, float]
     speed_kmh: float
     network_metrics: Dict[str, Any]
     system_health: Dict[str, Any]

@@ -1,8 +1,3 @@
-"""
-Prometheus metrics collection for McLaren Platform
-Exports platform metrics in Prometheus format for external monitoring
-"""
-
 import time
 import psutil
 import threading
@@ -13,20 +8,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 class PrometheusMetrics:
-    """Prometheus metrics exporter for McLaren Platform"""
     
     def __init__(self, port: int = 8000):
         self.port = port
         self.running = False
         self.collection_thread: Optional[threading.Thread] = None
         
-        # Initialize Prometheus metrics
         self._init_metrics()
         
     def _init_metrics(self):
-        """Initialize all Prometheus metrics"""
         
-        # Network metrics
         self.network_bytes_sent = Counter(
             'mclaren_network_bytes_sent_total',
             'Total bytes sent over network',
@@ -51,7 +42,6 @@ class PrometheusMetrics:
             ['interface']
         )
         
-        # System metrics
         self.cpu_usage = Gauge(
             'mclaren_cpu_usage_percent',
             'CPU usage percentage'
@@ -72,7 +62,6 @@ class PrometheusMetrics:
             'Total disk bytes written'
         )
         
-        # Platform-specific metrics
         self.platform_health = Gauge(
             'mclaren_platform_health_score',
             'Overall platform health score (0-100)'
@@ -101,13 +90,11 @@ class PrometheusMetrics:
             ['interface']
         )
         
-        # Container metrics (when Docker is available)
         self.container_count = Gauge(
             'mclaren_container_count',
             'Number of running containers'
         )
         
-        # Error metrics
         self.error_count = Counter(
             'mclaren_errors_total',
             'Total number of errors',
@@ -117,12 +104,10 @@ class PrometheusMetrics:
         logger.info("Prometheus metrics initialized")
     
     def start_server(self):
-        """Start Prometheus metrics HTTP server"""
         try:
             start_http_server(self.port)
             logger.info(f"Prometheus metrics server started on port {self.port}")
             
-            # Start metrics collection
             self.running = True
             self.collection_thread = threading.Thread(target=self._collect_metrics_loop, daemon=True)
             self.collection_thread.start()
@@ -132,50 +117,40 @@ class PrometheusMetrics:
             raise
     
     def stop_server(self):
-        """Stop metrics collection"""
         self.running = False
         if self.collection_thread:
             self.collection_thread.join(timeout=5)
         logger.info("Prometheus metrics collection stopped")
     
     def _collect_metrics_loop(self):
-        """Background loop for collecting metrics"""
         logger.info("Starting metrics collection loop")
         
-        # Store previous values for delta calculations
         prev_network_stats = {}
         prev_disk_stats = None
         
         while self.running:
             try:
-                # Collect system metrics
                 self._collect_system_metrics()
                 
-                # Collect network metrics
                 current_network_stats = self._collect_network_metrics(prev_network_stats)
                 prev_network_stats = current_network_stats
                 
-                # Collect disk I/O metrics
                 prev_disk_stats = self._collect_disk_metrics(prev_disk_stats)
                 
-                # Collect platform-specific metrics
                 self._collect_platform_metrics()
                 
-                time.sleep(10)  # Collect every 10 seconds
+                time.sleep(10)
                 
             except Exception as e:
                 logger.error(f"Error in metrics collection: {e}")
                 self.error_count.labels(error_type='collection', component='prometheus').inc()
-                time.sleep(5)  # Wait before retrying
+                time.sleep(5)
     
     def _collect_system_metrics(self):
-        """Collect system performance metrics"""
         try:
-            # CPU usage
             cpu_percent = psutil.cpu_percent(interval=1)
             self.cpu_usage.set(cpu_percent)
             
-            # Memory usage
             memory = psutil.virtual_memory()
             self.memory_usage.set(memory.percent)
             
@@ -184,11 +159,9 @@ class PrometheusMetrics:
             self.error_count.labels(error_type='system_metrics', component='prometheus').inc()
     
     def _collect_network_metrics(self, prev_stats: Dict) -> Dict:
-        """Collect network interface metrics"""
         try:
             current_stats = {}
             
-            # Per-interface statistics
             interfaces = psutil.net_io_counters(pernic=True)
             for interface, stats in interfaces.items():
                 current_stats[interface] = {
@@ -198,7 +171,6 @@ class PrometheusMetrics:
                     'packets_recv': stats.packets_recv
                 }
                 
-                # Calculate deltas if we have previous data
                 if interface in prev_stats:
                     prev = prev_stats[interface]
                     
@@ -207,7 +179,6 @@ class PrometheusMetrics:
                     packets_sent_delta = stats.packets_sent - prev['packets_sent']
                     packets_recv_delta = stats.packets_recv - prev['packets_recv']
                     
-                    # Only increment if positive (handles counter resets)
                     if bytes_sent_delta >= 0:
                         self.network_bytes_sent.labels(interface=interface)._value._value += bytes_sent_delta
                     if bytes_recv_delta >= 0:
@@ -225,7 +196,6 @@ class PrometheusMetrics:
             return {}
     
     def _collect_disk_metrics(self, prev_stats):
-        """Collect disk I/O metrics"""
         try:
             current_stats = psutil.disk_io_counters()
             if current_stats and prev_stats:
@@ -245,20 +215,15 @@ class PrometheusMetrics:
             return prev_stats
     
     def _collect_platform_metrics(self):
-        """Collect McLaren platform-specific metrics"""
         try:
-            # Active network connections
             connections = len(psutil.net_connections())
             self.active_connections.set(connections)
             
-            # Mock platform health (replace with actual platform health check)
-            health_score = 95 + (time.time() % 10)  # Simulated health
+            health_score = 95 + (time.time() % 10)
             self.platform_health.set(health_score)
             
-            # Mock circuit breaker status (replace with actual circuit breaker states)
             circuit_breakers = ['network', 'storage', 'compute', 'telemetry']
             for breaker in circuit_breakers:
-                # Simulate healthy circuit breakers
                 self.circuit_breaker_status.labels(breaker_name=breaker).set(1)
             
         except Exception as e:
@@ -266,34 +231,26 @@ class PrometheusMetrics:
             self.error_count.labels(error_type='platform_metrics', component='prometheus').inc()
     
     def record_message_processing_time(self, message_type: str, processing_time: float):
-        """Record time taken to process a message"""
         self.message_processing_time.labels(message_type=message_type).observe(processing_time)
     
     def record_aggregation_latency(self, interface: str, latency: float):
-        """Record network aggregation latency"""
         self.aggregation_latency.labels(interface=interface).observe(latency)
     
     def increment_error(self, error_type: str, component: str):
-        """Increment error counter"""
         self.error_count.labels(error_type=error_type, component=component).inc()
     
     def update_container_count(self, count: int):
-        """Update container count metric"""
         self.container_count.set(count)
     
     def update_circuit_breaker_status(self, breaker_name: str, status: int):
-        """Update circuit breaker status (1=healthy, 0=open)"""
         self.circuit_breaker_status.labels(breaker_name=breaker_name).set(status)
 
-# Global instance for easy access
 prometheus_metrics = PrometheusMetrics()
 
 def start_prometheus_server(port: int = 8000):
-    """Start Prometheus metrics server"""
     prometheus_metrics.port = port
     prometheus_metrics.start_server()
     return prometheus_metrics
 
 def get_prometheus_metrics() -> PrometheusMetrics:
-    """Get the global Prometheus metrics instance"""
     return prometheus_metrics

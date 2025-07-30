@@ -4,12 +4,11 @@ import docker
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import json
-from ..core.interfaces import IContainerOrchestrator
-from ..core.models import WorkloadSpec, DeploymentResult, WorkloadStatus, Event
-from ..core.events import EventBus
+from core.interfaces import IContainerOrchestrator
+from core.models import WorkloadSpec, DeploymentResult, WorkloadStatus, Event
+from core.events import EventBus
 
 class ContainerManager(IContainerOrchestrator):
-    """Docker-based container management with ARM optimization and OTA updates."""
     
     def __init__(self, config: Dict[str, Any], event_bus: EventBus):
         self._config = config
@@ -19,21 +18,16 @@ class ContainerManager(IContainerOrchestrator):
         self._health_monitoring_task: Optional[asyncio.Task] = None
         self._logger = logging.getLogger(__name__)
         
-        # Subscribe to relevant events
         self._event_bus.subscribe('container_health_failed', self._handle_health_failure)
         self._event_bus.subscribe('ota_update_requested', self._handle_ota_update)
     
     async def initialize(self) -> None:
-        """Initialize Docker client and container management."""
         try:
             self._docker_client = docker.from_env()
-            # Test Docker connection
             self._docker_client.ping()
             
-            # Discover existing workloads
             await self._discover_existing_workloads()
             
-            # Start health monitoring
             await self._start_health_monitoring()
             
             self._logger.info(f"Container manager initialized with {len(self._workload_registry)} existing workloads")
@@ -53,11 +47,9 @@ class ContainerManager(IContainerOrchestrator):
             ))
     
     async def deploy_workload(self, spec: WorkloadSpec) -> DeploymentResult:
-        """Deploy containerized workload with ARM optimization."""
         try:
             self._logger.info(f"Deploying workload: {spec.name}")
             
-            # Validate deployment specification
             validation_result = await self._validate_workload_spec(spec)
             if not validation_result['valid']:
                 return DeploymentResult(
@@ -67,13 +59,10 @@ class ContainerManager(IContainerOrchestrator):
                     deployed_at=datetime.now()
                 )
             
-            # Prepare ARM-optimized configuration
             container_config = await self._prepare_container_config(spec)
             
-            # Pull ARM64 image
             await self._pull_arm_image(spec.image)
             
-            # Deploy containers
             deployed_containers = []
             for replica in range(spec.replicas):
                 container_name = f"{spec.name}-{replica}"
@@ -82,7 +71,6 @@ class ContainerManager(IContainerOrchestrator):
                 container = self._docker_client.containers.run(**container_config)
                 deployed_containers.append(container.id)
             
-            # Register workload
             workload_id = f"workload-{spec.name}-{int(datetime.now().timestamp())}"
             self._workload_registry[spec.name] = {
                 'workload_id': workload_id,
@@ -93,8 +81,7 @@ class ContainerManager(IContainerOrchestrator):
                 'health_checks_passed': 0
             }
             
-            # Verify deployment health
-            await asyncio.sleep(10)  # Allow startup time
+            await asyncio.sleep(10)
             health_status = await self.get_workload_status(spec.name)
             
             if health_status.replicas_running == spec.replicas:
@@ -133,21 +120,17 @@ class ContainerManager(IContainerOrchestrator):
             )
     
     async def update_workload(self, name: str, new_spec: WorkloadSpec) -> 'UpdateResult':
-        """Update existing workload with rollback capability."""
         try:
             if name not in self._workload_registry:
                 raise ValueError(f"Workload {name} not found")
             
             self._logger.info(f"Updating workload: {name}")
             
-            # Store current state for rollback
             current_state = self._workload_registry[name].copy()
             
             try:
-                # Perform rolling update
                 await self._perform_rolling_update(name, new_spec)
                 
-                # Verify update success
                 health_status = await self.get_workload_status(name)
                 
                 if health_status.replicas_running == new_spec.replicas:
@@ -166,7 +149,6 @@ class ContainerManager(IContainerOrchestrator):
                         rollback_performed=False
                     )
                 else:
-                    # Rollback on failure
                     await self._rollback_workload(name, current_state)
                     return UpdateResult(
                         success=False,
@@ -175,7 +157,6 @@ class ContainerManager(IContainerOrchestrator):
                     )
                     
             except Exception as e:
-                # Emergency rollback
                 await self._rollback_workload(name, current_state)
                 raise e
                 
@@ -189,7 +170,6 @@ class ContainerManager(IContainerOrchestrator):
             )
     
     async def get_workload_status(self, name: str) -> WorkloadStatus:
-        """Get comprehensive workload status."""
         try:
             if name not in self._workload_registry:
                 raise ValueError(f"Workload {name} not found")
@@ -197,7 +177,6 @@ class ContainerManager(IContainerOrchestrator):
             workload_info = self._workload_registry[name]
             spec = workload_info['spec']
             
-            # Gather container statistics
             running_containers = 0
             total_cpu_usage = 0
             total_memory_usage = 0
@@ -213,24 +192,19 @@ class ContainerManager(IContainerOrchestrator):
                     if container.status == 'running':
                         running_containers += 1
                         
-                        # Get container stats
                         stats = container.stats(stream=False)
                         
-                        # CPU usage
                         cpu_percent = self._calculate_cpu_percent(stats)
                         total_cpu_usage += cpu_percent
                         
-                        # Memory usage
-                        memory_usage = stats['memory_stats'].get('usage', 0) / (1024 * 1024)  # MB
+                        memory_usage = stats['memory_stats'].get('usage', 0) / (1024 * 1024)
                         total_memory_usage += memory_usage
                         
-                        # Network I/O
                         networks = stats.get('networks', {})
                         for network_stats in networks.values():
                             total_network_rx += network_stats.get('rx_bytes', 0)
                             total_network_tx += network_stats.get('tx_bytes', 0)
                         
-                        # Start time
                         started_at = datetime.fromisoformat(
                             container.attrs['State']['StartedAt'].replace('Z', '+00:00')
                         )
@@ -270,7 +244,6 @@ class ContainerManager(IContainerOrchestrator):
             )
     
     async def scale_workload(self, name: str, replicas: int) -> bool:
-        """Scale workload to specified number of replicas."""
         try:
             if name not in self._workload_registry:
                 return False
@@ -282,10 +255,8 @@ class ContainerManager(IContainerOrchestrator):
                 return True
             
             if replicas > current_replicas:
-                # Scale up
                 await self._scale_up_workload(name, replicas - current_replicas)
             else:
-                # Scale down
                 await self._scale_down_workload(name, current_replicas - replicas)
             
             await self._event_bus.publish(Event(
@@ -304,7 +275,6 @@ class ContainerManager(IContainerOrchestrator):
             return False
     
     async def _validate_workload_spec(self, spec: WorkloadSpec) -> Dict[str, Any]:
-        """Validate workload specification."""
         errors = []
         
         if not spec.name:
@@ -316,7 +286,6 @@ class ContainerManager(IContainerOrchestrator):
         if spec.replicas < 1:
             errors.append("Replicas must be at least 1")
         
-        # Validate resource specifications
         if 'memory' in spec.resources:
             if not self._validate_memory_spec(spec.resources['memory']):
                 errors.append("Invalid memory specification")
@@ -331,7 +300,6 @@ class ContainerManager(IContainerOrchestrator):
         }
     
     def _validate_memory_spec(self, memory_spec: str) -> bool:
-        """Validate memory specification format."""
         try:
             if memory_spec.endswith(('m', 'M')):
                 int(memory_spec[:-1])
@@ -344,7 +312,6 @@ class ContainerManager(IContainerOrchestrator):
             return False
     
     def _validate_cpu_spec(self, cpu_spec: str) -> bool:
-        """Validate CPU specification format."""
         try:
             float(cpu_spec)
             return True
@@ -352,7 +319,6 @@ class ContainerManager(IContainerOrchestrator):
             return False
     
     async def _prepare_container_config(self, spec: WorkloadSpec) -> Dict[str, Any]:
-        """Prepare Docker container configuration with ARM optimization."""
         config = {
             'image': spec.image,
             'detach': True,
@@ -363,7 +329,6 @@ class ContainerManager(IContainerOrchestrator):
             'volumes': spec.volumes if spec.volumes else None
         }
         
-        # Apply resource limits
         if 'memory' in spec.resources:
             config['mem_limit'] = spec.resources['memory']
         
@@ -371,11 +336,9 @@ class ContainerManager(IContainerOrchestrator):
             cpu_quota = int(float(spec.resources['cpu']) * 100000)
             config['cpu_quota'] = cpu_quota
         
-        # Remove None values
         return {k: v for k, v in config.items() if v is not None}
     
     async def _pull_arm_image(self, image: str) -> None:
-        """Pull ARM64 container image."""
         try:
             self._logger.info(f"Pulling ARM64 image: {image}")
             self._docker_client.images.pull(image, platform='linux/arm64')
@@ -384,13 +347,11 @@ class ContainerManager(IContainerOrchestrator):
             self._docker_client.images.pull(image)
     
     async def _discover_existing_workloads(self) -> None:
-        """Discover and register existing container workloads."""
         try:
             containers = self._docker_client.containers.list(all=True)
             
             workload_groups = {}
             for container in containers:
-                # Extract workload name from container name (assuming format: workload-name-replica)
                 name_parts = container.name.split('-')
                 if len(name_parts) >= 3:
                     workload_name = '-'.join(name_parts[:-1])
@@ -400,13 +361,12 @@ class ContainerManager(IContainerOrchestrator):
                     
                     workload_groups[workload_name].append(container.id)
             
-            # Register discovered workloads
             for workload_name, container_ids in workload_groups.items():
                 self._workload_registry[workload_name] = {
                     'workload_id': f"discovered-{workload_name}",
                     'spec': self._reconstruct_workload_spec(workload_name, container_ids),
                     'container_ids': container_ids,
-                    'deployed_at': datetime.now(),  # Approximate
+                    'deployed_at': datetime.now(),
                     'status': 'running',
                     'health_checks_passed': 0
                 }
@@ -415,12 +375,10 @@ class ContainerManager(IContainerOrchestrator):
             self._logger.warning(f"Failed to discover existing workloads: {e}")
     
     def _reconstruct_workload_spec(self, workload_name: str, container_ids: List[str]) -> WorkloadSpec:
-        """Reconstruct workload specification from existing containers."""
         try:
             if not container_ids:
                 return WorkloadSpec(name=workload_name, image="unknown")
             
-            # Get first container to extract configuration
             container = self._docker_client.containers.get(container_ids[0])
             
             return WorkloadSpec(
@@ -428,7 +386,7 @@ class ContainerManager(IContainerOrchestrator):
                 image=container.image.tags[0] if container.image.tags else "unknown",
                 replicas=len(container_ids),
                 environment=container.attrs.get('Config', {}).get('Env', []),
-                ports=[]  # Would need more complex logic to extract ports
+                ports=[]
             )
             
         except Exception as e:
@@ -436,7 +394,6 @@ class ContainerManager(IContainerOrchestrator):
             return WorkloadSpec(name=workload_name, image="unknown")
     
     def _calculate_cpu_percent(self, stats: Dict) -> float:
-        """Calculate CPU percentage from container stats."""
         try:
             cpu_delta = (stats['cpu_stats']['cpu_usage']['total_usage'] - 
                         stats['precpu_stats']['cpu_usage']['total_usage'])
@@ -453,14 +410,12 @@ class ContainerManager(IContainerOrchestrator):
             return 0.0
     
     async def _start_health_monitoring(self) -> None:
-        """Start continuous health monitoring for all workloads."""
         if self._health_monitoring_task:
             self._health_monitoring_task.cancel()
         
         self._health_monitoring_task = asyncio.create_task(self._health_monitoring_loop())
     
     async def _health_monitoring_loop(self) -> None:
-        """Continuous health monitoring loop."""
         while True:
             try:
                 interval = self._config.get('health_check_interval', 30)
@@ -469,7 +424,6 @@ class ContainerManager(IContainerOrchestrator):
                     try:
                         status = await self.get_workload_status(workload_name)
                         
-                        # Check for unhealthy workloads
                         if status.replicas_running < status.replicas_desired:
                             await self._event_bus.publish(Event(
                                 event_type='workload_unhealthy',
@@ -480,7 +434,6 @@ class ContainerManager(IContainerOrchestrator):
                                 }
                             ))
                         
-                        # Update health check counter
                         if status.replicas_running == status.replicas_desired:
                             self._workload_registry[workload_name]['health_checks_passed'] += 1
                         else:
@@ -498,33 +451,26 @@ class ContainerManager(IContainerOrchestrator):
                 await asyncio.sleep(30)
     
     async def _perform_rolling_update(self, name: str, new_spec: WorkloadSpec) -> None:
-        """Perform rolling update of workload."""
         workload_info = self._workload_registry[name]
         old_container_ids = workload_info['container_ids'].copy()
         
-        # Prepare new container configuration
         new_config = await self._prepare_container_config(new_spec)
         
-        # Pull new image
         await self._pull_arm_image(new_spec.image)
         
         new_container_ids = []
         
         try:
-            # Rolling update: replace containers one by one
             for i, old_container_id in enumerate(old_container_ids):
-                # Start new container
                 new_config['name'] = f"{new_spec.name}-{i}"
                 new_container = self._docker_client.containers.run(**new_config)
                 
-                # Wait for new container to be healthy
                 await asyncio.sleep(10)
                 
                 new_container.reload()
                 if new_container.status == 'running':
                     new_container_ids.append(new_container.id)
                     
-                    # Stop old container
                     try:
                         old_container = self._docker_client.containers.get(old_container_id)
                         old_container.stop(timeout=30)
@@ -534,12 +480,10 @@ class ContainerManager(IContainerOrchestrator):
                 else:
                     raise Exception(f"New container {new_container.id} failed to start")
             
-            # Update registry
             workload_info['spec'] = new_spec
             workload_info['container_ids'] = new_container_ids
             
         except Exception as e:
-            # Cleanup new containers on failure
             for container_id in new_container_ids:
                 try:
                     container = self._docker_client.containers.get(container_id)
@@ -550,11 +494,9 @@ class ContainerManager(IContainerOrchestrator):
             raise e
     
     async def _rollback_workload(self, name: str, previous_state: Dict[str, Any]) -> None:
-        """Rollback workload to previous state."""
         try:
             self._logger.info(f"Rolling back workload: {name}")
             
-            # Stop current containers
             current_info = self._workload_registry[name]
             for container_id in current_info['container_ids']:
                 try:
@@ -564,10 +506,8 @@ class ContainerManager(IContainerOrchestrator):
                 except Exception as e:
                     self._logger.warning(f"Failed to stop container during rollback: {e}")
             
-            # Restore previous state
             self._workload_registry[name] = previous_state
             
-            # Redeploy previous version
             previous_spec = previous_state['spec']
             await self.deploy_workload(previous_spec)
             
@@ -580,7 +520,6 @@ class ContainerManager(IContainerOrchestrator):
             self._logger.error(f"Rollback failed for {name}: {e}")
     
     async def _scale_up_workload(self, name: str, additional_replicas: int) -> None:
-        """Scale up workload by adding replicas."""
         workload_info = self._workload_registry[name]
         spec = workload_info['spec']
         
@@ -600,7 +539,6 @@ class ContainerManager(IContainerOrchestrator):
         spec.replicas += additional_replicas
     
     async def _scale_down_workload(self, name: str, replicas_to_remove: int) -> None:
-        """Scale down workload by removing replicas."""
         workload_info = self._workload_registry[name]
         
         containers_to_remove = workload_info['container_ids'][-replicas_to_remove:]
@@ -617,12 +555,10 @@ class ContainerManager(IContainerOrchestrator):
         workload_info['spec'].replicas -= replicas_to_remove
     
     async def _handle_health_failure(self, event: Event) -> None:
-        """Handle workload health failure events."""
         workload_name = event.data.get('workload_name')
         if workload_name in self._workload_registry:
             self._logger.warning(f"Health failure detected for workload: {workload_name}")
             
-            # Attempt to restart unhealthy workload
             try:
                 spec = self._workload_registry[workload_name]['spec']
                 await self.deploy_workload(spec)
@@ -630,7 +566,6 @@ class ContainerManager(IContainerOrchestrator):
                 self._logger.error(f"Failed to restart unhealthy workload {workload_name}: {e}")
     
     async def _handle_ota_update(self, event: Event) -> None:
-        """Handle over-the-air update requests."""
         workload_name = event.data.get('workload_name')
         new_image = event.data.get('new_image')
         

@@ -7,10 +7,9 @@ import numpy as np
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import seaborn as sns
-from ..core.events import EventBus, Event
+from core.events import EventBus, Event
 
 class NetworkAnalyzer:
-    """Network traffic analysis using packet capture and statistical analysis."""
     
     def __init__(self, event_bus: EventBus):
         self._event_bus = event_bus
@@ -19,9 +18,7 @@ class NetworkAnalyzer:
         self._packet_data = []
         
     async def start_packet_capture(self, interface: str = "any", duration: int = 60):
-        """Start packet capture using tshark (Wireshark CLI)."""
         try:
-            # Use tshark for packet capture
             cmd = [
                 'tshark', '-i', interface, '-a', f'duration:{duration}',
                 '-T', 'fields', '-e', 'frame.time_epoch', '-e', 'ip.src', 
@@ -55,7 +52,6 @@ class NetworkAnalyzer:
             self._capture_running = False
     
     async def _process_packet_data(self, raw_data: str):
-        """Process captured packet data into structured format."""
         self._packet_data = []
         
         for line in raw_data.strip().split('\n'):
@@ -75,7 +71,6 @@ class NetworkAnalyzer:
                         continue
     
     async def _generate_mock_packet_data(self):
-        """Generate mock packet data for demonstration."""
         import random
         
         self._packet_data = []
@@ -87,16 +82,14 @@ class NetworkAnalyzer:
                 'src_ip': f"192.168.1.{random.randint(1, 100)}",
                 'dst_ip': f"10.0.0.{random.randint(1, 50)}",
                 'length': random.randint(64, 1500),
-                'protocol': random.choice(['6', '17', '1'])  # TCP, UDP, ICMP
+                'protocol': random.choice(['6', '17', '1'])
             }
             self._packet_data.append(packet)
     
     def analyze_traffic_patterns(self) -> Dict[str, Any]:
-        """Analyze network traffic patterns using pandas and numpy."""
         if not self._packet_data:
             return {'error': 'No packet data available'}
         
-        # Convert to DataFrame for analysis
         df = pd.DataFrame(self._packet_data)
         df['datetime'] = pd.to_datetime(df['timestamp'], unit='s')
         df['protocol_name'] = df['protocol'].map({'6': 'TCP', '17': 'UDP', '1': 'ICMP'})
@@ -111,7 +104,7 @@ class NetworkAnalyzer:
             'top_destination_ips': df['dst_ip'].value_counts().head(10).to_dict(),
             'packets_per_second': len(df) / (df['timestamp'].max() - df['timestamp'].min()),
             'bandwidth_usage': {
-                'average_bps': df['length'].sum() * 8 / (df['timestamp'].max() - df['timestamp'].min()),  # bits per second
+                'average_bps': df['length'].sum() * 8 / (df['timestamp'].max() - df['timestamp'].min()),
                 'peak_bps': df.groupby(df['timestamp'].astype(int))['length'].sum().max() * 8,
                 'average_packet_rate': len(df) / (df['timestamp'].max() - df['timestamp'].min())
             }
@@ -120,7 +113,6 @@ class NetworkAnalyzer:
         return analysis
     
     def generate_traffic_visualizations(self, output_dir: str = "logs"):
-        """Generate network traffic visualizations."""
         if not self._packet_data:
             self._logger.warning("No packet data available for visualization")
             return
@@ -129,17 +121,14 @@ class NetworkAnalyzer:
         df['datetime'] = pd.to_datetime(df['timestamp'], unit='s')
         df['protocol_name'] = df['protocol'].map({'6': 'TCP', '17': 'UDP', '1': 'ICMP'})
         
-        # Set up the plotting style
         plt.style.use('seaborn-v0_8')
         fig, axes = plt.subplots(2, 2, figsize=(15, 12))
         fig.suptitle('McLaren Platform - Network Traffic Analysis', fontsize=16, fontweight='bold')
         
-        # 1. Protocol Distribution Pie Chart
         protocol_counts = df['protocol_name'].value_counts()
         axes[0, 0].pie(protocol_counts.values, labels=protocol_counts.index, autopct='%1.1f%%')
         axes[0, 0].set_title('Protocol Distribution')
         
-        # 2. Packet Size Distribution
         axes[0, 1].hist(df['length'], bins=50, alpha=0.7, color='skyblue', edgecolor='black')
         axes[0, 1].set_xlabel('Packet Size (bytes)')
         axes[0, 1].set_ylabel('Frequency')
@@ -147,7 +136,6 @@ class NetworkAnalyzer:
         axes[0, 1].axvline(df['length'].mean(), color='red', linestyle='--', label=f'Mean: {df["length"].mean():.0f}')
         axes[0, 1].legend()
         
-        # 3. Traffic Over Time
         df_time_grouped = df.set_index('datetime').resample('1s')['length'].sum()
         axes[1, 0].plot(df_time_grouped.index, df_time_grouped.values, color='green', linewidth=2)
         axes[1, 0].set_xlabel('Time')
@@ -155,7 +143,6 @@ class NetworkAnalyzer:
         axes[1, 0].set_title('Network Traffic Over Time')
         axes[1, 0].tick_params(axis='x', rotation=45)
         
-        # 4. Top Source IPs
         top_ips = df['src_ip'].value_counts().head(10)
         axes[1, 1].barh(range(len(top_ips)), top_ips.values, color='coral')
         axes[1, 1].set_yticks(range(len(top_ips)))
@@ -167,24 +154,19 @@ class NetworkAnalyzer:
         plt.savefig(f'{output_dir}/network_traffic_analysis.png', dpi=300, bbox_inches='tight')
         plt.close()
         
-        # Generate additional latency analysis chart
         self._generate_latency_analysis(df, output_dir)
         
         self._logger.info(f"Network visualizations saved to {output_dir}/")
     
     def _generate_latency_analysis(self, df: pd.DataFrame, output_dir: str):
-        """Generate latency analysis visualization."""
-        # Simulate latency data based on packet timing
         df_sorted = df.sort_values('timestamp')
-        df_sorted['inter_arrival_time'] = df_sorted['timestamp'].diff() * 1000  # Convert to ms
+        df_sorted['inter_arrival_time'] = df_sorted['timestamp'].diff() * 1000
         
         plt.figure(figsize=(12, 8))
         
-        # Create subplot for latency analysis
         fig, axes = plt.subplots(2, 1, figsize=(12, 10))
         fig.suptitle('McLaren Platform - Network Latency Analysis', fontsize=16, fontweight='bold')
         
-        # Inter-arrival time distribution
         axes[0].hist(df_sorted['inter_arrival_time'].dropna(), bins=50, alpha=0.7, color='lightblue', edgecolor='black')
         axes[0].set_xlabel('Inter-arrival Time (ms)')
         axes[0].set_ylabel('Frequency')
@@ -193,7 +175,6 @@ class NetworkAnalyzer:
                        label=f'Mean: {df_sorted["inter_arrival_time"].mean():.2f} ms')
         axes[0].legend()
         
-        # Latency over time (simulated)
         latency_over_time = df_sorted.set_index('datetime')['inter_arrival_time'].rolling('10s').mean()
         axes[1].plot(latency_over_time.index, latency_over_time.values, color='purple', linewidth=2)
         axes[1].set_xlabel('Time')

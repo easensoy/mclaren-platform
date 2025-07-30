@@ -1,8 +1,3 @@
-"""
-McLaren Platform Web Dashboard
-Integrates with existing monitoring infrastructure to provide web visualization
-"""
-
 import asyncio
 import json
 import logging
@@ -23,14 +18,13 @@ except ImportError:
     print("Dash not installed. Run: pip install dash plotly")
 
 import psutil
-from .metrics_collector import MetricsCollector
-from .data_visualiser import DataVisualizer
-from ..core.events import EventBus
+from monitoring.metrics_collector import MetricsCollector
+from monitoring.data_visualiser import DataVisualizer
+from core.events import EventBus
 
 logger = logging.getLogger(__name__)
 
 class McLarenMonitor:
-    """Main dashboard class that integrates with existing McLaren platform monitoring"""
     
     def __init__(self, metrics_collector: Optional[MetricsCollector] = None):
         if not DASH_AVAILABLE:
@@ -39,12 +33,10 @@ class McLarenMonitor:
         self.app = dash.Dash(__name__)
         self.app.title = "McLaren Platform Dashboard"
         
-        # Initialize components
         self.metrics_collector = metrics_collector
         self.event_bus = EventBus()
         self.data_visualizer = DataVisualizer(self.event_bus)
         
-        # Data storage for real-time updates
         self.live_data = {
             'network_interfaces': [],
             'system_metrics': [],
@@ -52,7 +44,6 @@ class McLarenMonitor:
             'alerts': []
         }
         
-        # Setup dashboard
         self._setup_layout()
         self._setup_callbacks()
         self._start_data_collection()
@@ -60,10 +51,8 @@ class McLarenMonitor:
         logger.info("McLaren Dashboard initialized")
     
     def _setup_layout(self):
-        """Setup the dashboard layout using existing platform styling"""
         
         self.app.layout = html.Div([
-            # Header
             html.Div([
                 html.Img(src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 
                         style={'height': '50px', 'width': '50px', 'display': 'inline-block'}),
@@ -72,16 +61,13 @@ class McLarenMonitor:
                 html.Div(id='live-status', style={'float': 'right', 'marginTop': '15px'})
             ], style={'backgroundColor': '#1a1a1a', 'padding': '20px', 'color': 'white'}),
             
-            # Auto-refresh component
             dcc.Interval(
                 id='interval-component',
-                interval=3*1000,  # Update every 3 seconds
+                interval=3*1000,
                 n_intervals=0
             ),
             
-            # Main dashboard content
             html.Div([
-                # System Overview Row
                 html.Div([
                     html.H2("System Overview", style={'color': '#ff6b00', 'textAlign': 'center'}),
                     html.Div([
@@ -94,7 +80,6 @@ class McLarenMonitor:
                     ], className='row'),
                 ], style={'margin': '20px'}),
                 
-                # Network Monitoring Row
                 html.Div([
                     html.H2("Network Monitoring", style={'color': '#ff6b00', 'textAlign': 'center'}),
                     html.Div([
@@ -107,7 +92,6 @@ class McLarenMonitor:
                     ], className='row'),
                 ], style={'margin': '20px'}),
                 
-                # Platform Health Row
                 html.Div([
                     html.H2("Platform Health", style={'color': '#ff6b00', 'textAlign': 'center'}),
                     html.Div([
@@ -125,7 +109,6 @@ class McLarenMonitor:
         ])
     
     def _setup_callbacks(self):
-        """Setup dashboard callbacks for real-time updates"""
         
         @self.app.callback(
             [Output('live-status', 'children'),
@@ -140,17 +123,14 @@ class McLarenMonitor:
         def update_dashboard(n):
             current_time = datetime.now()
             
-            # Status indicator
             status = html.Div([
                 html.Span("● LIVE", style={'color': 'green', 'fontWeight': 'bold'}),
                 html.Span(f" | {current_time.strftime('%H:%M:%S')}", style={'marginLeft': '10px'})
             ])
             
-            # Get system metrics
             cpu_percent = psutil.cpu_percent()
             memory = psutil.virtual_memory()
             
-            # CPU/Memory Gauge
             gauge_fig = go.Figure()
             gauge_fig.add_trace(go.Indicator(
                 mode="gauge+number",
@@ -182,7 +162,6 @@ class McLarenMonitor:
                 title="System Resources"
             )
             
-            # Network Overview
             network_stats = psutil.net_io_counters(pernic=True)
             interfaces = list(network_stats.keys())[:5]
             bytes_sent = [network_stats[iface].bytes_sent/1024/1024 for iface in interfaces]
@@ -193,9 +172,8 @@ class McLarenMonitor:
             network_fig.add_trace(go.Bar(name='Received (MB)', x=interfaces, y=bytes_recv, marker_color='blue'))
             network_fig.update_layout(title='Network Interface Activity', height=300)
             
-            # Interface Quality (using data from your NetworkAggregationEngine concept)
             interface_names = ['wlp2s0f0', 'docker0', 'eth0', 'wlan0']
-            quality_scores = [85 + (n%10), 92 - (n%5), 78 + (n%8), 88 - (n%3)]  # Mock dynamic data
+            quality_scores = [85 + (n%10), 92 - (n%5), 78 + (n%8), 88 - (n%3)]
             colors = ['green' if q > 80 else 'orange' if q > 60 else 'red' for q in quality_scores]
             
             quality_fig = go.Figure(data=[
@@ -203,7 +181,6 @@ class McLarenMonitor:
             ])
             quality_fig.update_layout(title='Interface Quality Scores', height=300)
             
-            # Network Throughput Timeline
             if len(self.live_data['network_interfaces']) > 1:
                 df_network = pd.DataFrame(self.live_data['network_interfaces'])
                 throughput_fig = go.Figure()
@@ -219,7 +196,6 @@ class McLarenMonitor:
                 throughput_fig = go.Figure()
                 throughput_fig.update_layout(title='Network Throughput (Collecting data...)', height=300)
             
-            # Platform Health
             if len(self.live_data['platform_health']) > 1:
                 df_health = pd.DataFrame(self.live_data['platform_health'])
                 health_fig = go.Figure()
@@ -235,7 +211,6 @@ class McLarenMonitor:
                 health_fig = go.Figure()
                 health_fig.update_layout(title='Platform Health (Initializing...)', height=300)
             
-            # Alerts Panel
             alerts_content = html.Div([
                 html.H4("🚨 System Alerts", style={'color': '#ff6b00'}),
                 html.Div([
@@ -251,33 +226,29 @@ class McLarenMonitor:
             return (status, gauge_fig, network_fig, quality_fig, throughput_fig, health_fig, alerts_content)
     
     def _start_data_collection(self):
-        """Start background data collection for real-time updates"""
         def collect_data():
             while True:
                 try:
                     current_time = datetime.now()
                     
-                    # Collect network data
                     network_stats = psutil.net_io_counters()
                     self.live_data['network_interfaces'].append({
                         'timestamp': current_time,
-                        'throughput': (network_stats.bytes_sent + network_stats.bytes_recv) / 1024 / 1024,  # MB
+                        'throughput': (network_stats.bytes_sent + network_stats.bytes_recv) / 1024 / 1024,
                         'packets': network_stats.packets_sent + network_stats.packets_recv
                     })
                     
-                    # Collect platform health (mock data representing your platform health)
-                    health_score = 90 + (time.time() % 20) - 10  # Simulated health fluctuation
+                    health_score = 90 + (time.time() % 20) - 10
                     self.live_data['platform_health'].append({
                         'timestamp': current_time,
                         'health_score': max(0, min(100, health_score))
                     })
                     
-                    # Keep only last 50 data points for performance
                     for key in self.live_data:
                         if len(self.live_data[key]) > 50:
                             self.live_data[key] = self.live_data[key][-50:]
                     
-                    time.sleep(3)  # Collect every 3 seconds
+                    time.sleep(3)
                     
                 except Exception as e:
                     logger.error(f"Data collection error: {e}")
@@ -288,7 +259,6 @@ class McLarenMonitor:
         logger.info("Background data collection started")
     
     def run(self, debug=False, port=8050, host='0.0.0.0'):
-        """Run the dashboard server"""
         logger.info(f"Starting McLaren Dashboard on http://{host}:{port}")
         print(f"\n🚀 McLaren Platform Dashboard")
         print(f"📊 Dashboard URL: http://localhost:{port}")
@@ -297,7 +267,6 @@ class McLarenMonitor:
         print(f"Press Ctrl+C to stop\n")
         
         try:
-            # Try the new API first, fallback to old API if needed
             if hasattr(self.app, 'run'):
                 self.app.run(debug=debug, port=port, host=host, use_reloader=False)
             else:

@@ -5,12 +5,11 @@ from typing import Dict, Any, Optional, AsyncGenerator, List
 from datetime import datetime, timedelta
 import aioredis
 import uuid
-from ..core.interfaces import ITelemetryProcessor
-from ..core.models import TelemetryData, Event, AlertRule, AnalyticsQuery, AnalyticsResult
-from ..core.events import EventBus
+from core.interfaces import ITelemetryProcessor
+from core.models import TelemetryData, Event, AlertRule, AnalyticsQuery, AnalyticsResult
+from core.events import EventBus
 
 class TelemetryProcessor(ITelemetryProcessor):
-    """High-performance telemetry processor with real-time analytics."""
     
     def __init__(self, config: Dict[str, Any], event_bus: EventBus):
         self._config = config
@@ -22,21 +21,17 @@ class TelemetryProcessor(ITelemetryProcessor):
         self._processing_task: Optional[asyncio.Task] = None
         self._logger = logging.getLogger(__name__)
         
-        # Subscribe to relevant events
         self._event_bus.subscribe('telemetry_alert_triggered', self._handle_alert)
         self._event_bus.subscribe('high_speed_detected', self._handle_high_speed_alert)
     
     async def initialize(self) -> None:
-        """Initialize telemetry processor with Redis connection."""
         try:
             redis_url = self._config.get('redis_url', 'redis://localhost:6379')
             self._redis_client = await aioredis.from_url(redis_url)
             await self._redis_client.ping()
             
-            # Setup default alert rules
             await self._setup_default_alert_rules()
             
-            # Start processing task
             self._processing_task = asyncio.create_task(self._processing_loop())
             
             self._logger.info("Telemetry processor initialized successfully")
@@ -51,7 +46,6 @@ class TelemetryProcessor(ITelemetryProcessor):
             raise
     
     async def process_stream(self, data_stream: AsyncGenerator[TelemetryData, None]) -> None:
-        """Process continuous telemetry data stream."""
         try:
             async for telemetry_data in data_stream:
                 await self._processing_queue.put(telemetry_data)
@@ -61,18 +55,15 @@ class TelemetryProcessor(ITelemetryProcessor):
             raise
     
     async def get_analytics(self, query: AnalyticsQuery) -> AnalyticsResult:
-        """Get analytics based on query parameters."""
         try:
             query_id = str(uuid.uuid4())
             
-            # Check cache for similar queries
             cache_key = self._generate_cache_key(query)
             if cache_key in self._analytics_cache:
                 cached_result = self._analytics_cache[cache_key]
-                if (datetime.now() - cached_result['timestamp']).total_seconds() < 300:  # 5-minute cache
+                if (datetime.now() - cached_result['timestamp']).total_seconds() < 300:
                     return cached_result['result']
             
-            # Generate analytics from stored data
             data_points = await self._fetch_telemetry_data(query)
             summary = await self._calculate_analytics_summary(data_points, query)
             
@@ -83,7 +74,6 @@ class TelemetryProcessor(ITelemetryProcessor):
                 generated_at=datetime.now()
             )
             
-            # Cache result
             self._analytics_cache[cache_key] = {
                 'timestamp': datetime.now(),
                 'result': result
@@ -96,7 +86,6 @@ class TelemetryProcessor(ITelemetryProcessor):
             raise
     
     async def register_alert(self, alert_rule: AlertRule) -> str:
-        """Register alert rule and return rule ID."""
         try:
             self._alert_rules[alert_rule.rule_id] = alert_rule
             
@@ -117,20 +106,16 @@ class TelemetryProcessor(ITelemetryProcessor):
             raise
     
     async def _processing_loop(self) -> None:
-        """Main telemetry processing loop."""
         while True:
             try:
-                # Process data from queue with timeout
                 telemetry_data = await asyncio.wait_for(
                     self._processing_queue.get(), 
                     timeout=1.0
                 )
                 
-                # Process the telemetry data
                 await self._process_telemetry_data(telemetry_data)
                 
             except asyncio.TimeoutError:
-                # No data to process, continue
                 continue
             except asyncio.CancelledError:
                 break
@@ -139,18 +124,13 @@ class TelemetryProcessor(ITelemetryProcessor):
                 await asyncio.sleep(1)
     
     async def _process_telemetry_data(self, data: TelemetryData) -> None:
-        """Process individual telemetry data point."""
         try:
-            # Store raw telemetry data
             await self._store_telemetry_data(data)
             
-            # Check alert rules
             await self._check_alert_rules(data)
             
-            # Update real-time analytics
             await self._update_real_time_analytics(data)
             
-            # Publish processing event
             await self._event_bus.publish(Event(
                 event_type='telemetry_data_processed',
                 data={
@@ -165,11 +145,9 @@ class TelemetryProcessor(ITelemetryProcessor):
             self._logger.error(f"Telemetry processing failed: {e}")
     
     async def _store_telemetry_data(self, data: TelemetryData) -> None:
-        """Store telemetry data in Redis streams."""
         if not self._redis_client:
             return
         
-        # Store in main telemetry stream
         stream_key = f"telemetry:{data.train_id}"
         
         telemetry_record = {
@@ -190,15 +168,13 @@ class TelemetryProcessor(ITelemetryProcessor):
         
         await self._redis_client.xadd(stream_key, telemetry_record)
         
-        # Trim stream to prevent excessive memory usage
         max_length = self._config.get('buffer_size', 10000)
         await self._redis_client.xtrim(stream_key, maxlen=max_length, approximate=True)
         
-        # Store latest data point for quick access
         latest_key = f"telemetry:latest:{data.train_id}"
         await self._redis_client.setex(
             latest_key,
-            3600,  # 1 hour TTL
+            3600,
             json.dumps({
                 'timestamp': data.timestamp.isoformat(),
                 'location': data.location,
@@ -210,7 +186,6 @@ class TelemetryProcessor(ITelemetryProcessor):
         )
     
     async def _check_alert_rules(self, data: TelemetryData) -> None:
-        """Check telemetry data against registered alert rules."""
         for rule_id, rule in self._alert_rules.items():
             if not rule.enabled:
                 continue
@@ -223,7 +198,6 @@ class TelemetryProcessor(ITelemetryProcessor):
                 self._logger.error(f"Alert rule evaluation failed for {rule_id}: {e}")
     
     async def _evaluate_alert_condition(self, rule: AlertRule, data: TelemetryData) -> bool:
-        """Evaluate whether alert condition is met."""
         if rule.condition == 'speed_threshold':
             return data.speed_kmh > rule.threshold
         elif rule.condition == 'network_quality_low':
@@ -239,7 +213,6 @@ class TelemetryProcessor(ITelemetryProcessor):
         return False
     
     async def _trigger_alert(self, rule: AlertRule, data: TelemetryData) -> None:
-        """Trigger alert when condition is met."""
         await self._event_bus.publish(Event(
             event_type='telemetry_alert_triggered',
             data={
@@ -255,7 +228,6 @@ class TelemetryProcessor(ITelemetryProcessor):
         ))
     
     def _get_actual_value(self, rule: AlertRule, data: TelemetryData) -> float:
-        """Get actual value that triggered the alert."""
         if rule.condition == 'speed_threshold':
             return data.speed_kmh
         elif rule.condition == 'network_quality_low':
@@ -268,7 +240,6 @@ class TelemetryProcessor(ITelemetryProcessor):
         return 0.0
     
     def _calculate_network_quality(self, network_metrics: Dict[str, Any]) -> float:
-        """Calculate network quality score."""
         try:
             bandwidth = network_metrics.get('bandwidth_mbps', 0)
             latency = network_metrics.get('latency_ms', 1000)
@@ -283,7 +254,6 @@ class TelemetryProcessor(ITelemetryProcessor):
             return 0.0
     
     def _calculate_system_efficiency(self, system_health: Dict[str, Any]) -> float:
-        """Calculate system efficiency score."""
         try:
             cpu_usage = system_health.get('cpu_percent', 100)
             memory_usage = system_health.get('memory_percent', 100)
@@ -298,7 +268,6 @@ class TelemetryProcessor(ITelemetryProcessor):
             return 0.0
     
     async def _update_real_time_analytics(self, data: TelemetryData) -> None:
-        """Update real-time analytics data."""
         analytics_key = f"analytics:realtime:{data.train_id}"
         
         analytics_data = {
@@ -306,19 +275,18 @@ class TelemetryProcessor(ITelemetryProcessor):
             'current_speed': data.speed_kmh,
             'network_quality': self._calculate_network_quality(data.network_metrics),
             'system_efficiency': self._calculate_system_efficiency(data.system_health),
-            'passenger_density': data.passenger_count / 400,  # Assuming 400 capacity
+            'passenger_density': data.passenger_count / 400,
             'location': data.location
         }
         
         if self._redis_client:
             await self._redis_client.setex(
                 analytics_key,
-                1800,  # 30 minute TTL
+                1800,
                 json.dumps(analytics_data)
             )
     
     async def _setup_default_alert_rules(self) -> None:
-        """Setup default alert rules from configuration."""
         default_rules = [
             AlertRule(
                 rule_id="speed_high",
@@ -347,7 +315,6 @@ class TelemetryProcessor(ITelemetryProcessor):
             self._alert_rules[rule.rule_id] = rule
     
     def _generate_cache_key(self, query: AnalyticsQuery) -> str:
-        """Generate cache key for analytics query."""
         key_parts = [
             query.train_id or "all",
             query.start_time.isoformat() if query.start_time else "no_start",
@@ -359,22 +326,18 @@ class TelemetryProcessor(ITelemetryProcessor):
         return ":".join(key_parts)
     
     async def _fetch_telemetry_data(self, query: AnalyticsQuery) -> List[Dict[str, Any]]:
-        """Fetch telemetry data based on query parameters."""
         if not self._redis_client:
             return []
         
         data_points = []
         
         try:
-            # Determine time range
             end_time = query.end_time or datetime.now()
             start_time = query.start_time or (end_time - timedelta(hours=1))
             
-            # Convert to millisecond timestamps for Redis
             start_ts = int(start_time.timestamp() * 1000)
             end_ts = int(end_time.timestamp() * 1000)
             
-            # Query Redis streams
             if query.train_id:
                 stream_key = f"telemetry:{query.train_id}"
                 stream_data = await self._redis_client.xrange(
@@ -387,7 +350,6 @@ class TelemetryProcessor(ITelemetryProcessor):
                 for entry_id, fields in stream_data:
                     data_point = self._parse_stream_entry(fields)
                     if query.metrics:
-                        # Filter to requested metrics
                         data_point = {k: v for k, v in data_point.items() if k in query.metrics}
                     data_points.append(data_point)
             
@@ -398,7 +360,6 @@ class TelemetryProcessor(ITelemetryProcessor):
             return []
     
     def _parse_stream_entry(self, fields: Dict[bytes, bytes]) -> Dict[str, Any]:
-        """Parse Redis stream entry into structured data."""
         try:
             data_point = {}
             
@@ -425,7 +386,6 @@ class TelemetryProcessor(ITelemetryProcessor):
             return {}
     
     async def _calculate_analytics_summary(self, data_points: List[Dict[str, Any]], query: AnalyticsQuery) -> Dict[str, Any]:
-        """Calculate summary statistics for analytics data."""
         if not data_points:
             return {'error': 'No data points available'}
         
@@ -438,7 +398,6 @@ class TelemetryProcessor(ITelemetryProcessor):
             'metrics': {}
         }
         
-        # Calculate statistics for numeric fields
         numeric_fields = ['speed_kmh', 'location_lat', 'location_lon', 'passenger_count']
         
         for field in numeric_fields:
@@ -455,7 +414,6 @@ class TelemetryProcessor(ITelemetryProcessor):
         return summary
     
     async def _handle_alert(self, event: Event) -> None:
-        """Handle triggered alert events."""
         rule_name = event.data.get('rule_name')
         severity = event.data.get('severity')
         train_id = event.data.get('train_id')
@@ -463,13 +421,11 @@ class TelemetryProcessor(ITelemetryProcessor):
         self._logger.warning(f"Alert triggered: {rule_name} for train {train_id} (severity: {severity})")
     
     async def _handle_high_speed_alert(self, event: Event) -> None:
-        """Handle high speed detection events."""
         train_id = event.data.get('train_id')
         speed_kmh = event.data.get('speed_kmh')
         
         self._logger.info(f"High speed detected for train {train_id}: {speed_kmh} km/h")
         
-        # Enhanced monitoring could be triggered here
         await self._event_bus.publish(Event(
             event_type='enhanced_monitoring_requested',
             data={
